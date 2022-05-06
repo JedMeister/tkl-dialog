@@ -36,14 +36,19 @@ def password_complexity(password: str) -> Union[str, int]:
 
 
 class Dialog:
-    def __init__(self, title: str, width: int = 60, height: int = 20):
+    def __init__(self,
+                 title: str,
+                 width: int = 60,
+                 height: int = 20,
+                 mouse: bool = False):
         self.width = width
         self.height = height
 
         self.console = dialog.Dialog(dialog="dialog")
+        self.console.set_background_title(title)
         self.console.add_persistent_args(["--no-collapse"])
-        self.console.add_persistent_args(["--backtitle", title])
-        self.console.add_persistent_args(["--no-mouse"])
+        if not mouse:
+            self.console.add_persistent_args(["--no-mouse"])
 
     def _handle_exitcode(self, retcode: int) -> bool:
         logging.debug(f"_handle_exitcode(retcode={retcode!r})")
