@@ -2,8 +2,10 @@
 
 import re
 import os
+import sys
 import dialog
 import logging
+from typing import Union
 
 EMAIL_RE = re.compile(r"(?:^|\s).*\S@\S+(?:\s|$)", re.IGNORECASE)
 
@@ -22,7 +24,7 @@ class TklDialogError(Exception):
     pass
 
 
-def password_complexity(password: str) -> str:
+def password_complexity(password: str) -> Union[str, int]:
     """return password complexity score from 0 (invalid) to 4 (strong)"""
 
     lowercase = re.search('[a-z]', password) is not None
@@ -92,16 +94,16 @@ class Dialog:
 
         return retcode
 
-    def error(self, text: str) -> self.wrapper:
+    def error(self, text: str) -> int:
         height = self._calc_height(text)
         return self.wrapper("msgbox", text, height, self.width, title="Error")
 
-    def msgbox(self, title: str, text: str) -> self.wrapper:
+    def msgbox(self, title: str, text: str) -> int:
         height = self._calc_height(text)
         logging.debug(f"msgbox(title={title!r}, text=<redacted>)")
         return self.wrapper("msgbox", text, height, self.width, title=title)
 
-    def infobox(self, text: str) -> self.wrapper:
+    def infobox(self, text: str) -> int:
         height = self._calc_height(text)
         logging.debug(f"infobox(text={text!r}")
         return self.wrapper("infobox", text, height, self.width)
@@ -112,7 +114,7 @@ class Dialog:
                  init: str = '',
                  ok_label: str = "OK",
                  cancel_label: str = "Cancel"
-                 ) -> self.wrapper:
+                 ) -> int:
         logging.debug(
                 f"inputbox(title={title!r}, text=<redacted>,"
                 +f" init={init!r}, ok_label={ok_label!r},"
@@ -149,10 +151,10 @@ class Dialog:
         """choices: array of tuples
             [ (opt1, opt1_text), (opt2, opt2_text) ]
         """
-        retcode, choice = self.wrapper("menu", text, self.height, self.width,
-                                       menu_height=len(choices)+1,
-                                       title=title, choices=choices,
-                                       no_cancel=True)
+        retcode, choice = self.wrapper(
+                "menu", text, self.height, self.width,
+                menu_height=len(choices)+1, title=title,
+                choices=choices, no_cancel=True)
         return choice
 
     def get_password(self,
@@ -173,7 +175,7 @@ class Dialog:
                 f'{req_string}. Also must NOT contain these characters: {blacklist}'
         height = self._calc_height(text+req_string) + 3
 
-        def ask(title, text):
+        def ask(title, text: str) -> int:
             return self.wrapper('passwordbox', text+req_string, height,
                                 self.width, title=title, ok_label='OK',
                                 no_cancel='True', insecure=True)[1]
