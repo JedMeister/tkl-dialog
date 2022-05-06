@@ -32,6 +32,9 @@ class Dialog:
                  title: str,
                  width: int = 60,
                  height: int = 20,
+                 ok_label: str = None,
+                 cancel_label: str = None,
+                 colors: bool = False,
                  mouse: bool = False):
         self.width = width
         self.height = height
@@ -39,10 +42,16 @@ class Dialog:
         self.console = dialog.Dialog(dialog="dialog")
         self.console.set_background_title(title)
         self.console.add_persistent_args(["--no-collapse"])
+        if ok_label:
+            self.console.add_persistent_args(["--ok-label", ok_label])
+        if cancel_label:
+            self.console.add_persistent_args(["--cancel-label", cancel_label])
+        if colors:
+            self.console.add_persistent_args(["--colors"])
         if not mouse:
             self.console.add_persistent_args(["--no-mouse"])
 
-    def _handle_exitcode(self, retcode: int) -> bool:
+    def _handle_exitcode(self, retcode: str) -> bool:
         logging.debug(f"_handle_exitcode(retcode={retcode!r})")
         if retcode == self.console.ESC:  # ESC, ALT+?
             text = "Do you really want to quit?"
