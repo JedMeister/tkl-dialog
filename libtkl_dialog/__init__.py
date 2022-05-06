@@ -3,9 +3,12 @@
 import re
 import os
 import sys
-import dialog
 import logging
 from typing import Union
+
+import dialog
+
+from .utils import password_complexity
 
 EMAIL_RE = re.compile(r"(?:^|\s).*\S@\S+(?:\s|$)", re.IGNORECASE)
 
@@ -22,17 +25,6 @@ logging.basicConfig(
 
 class TklDialogError(Exception):
     pass
-
-
-def password_complexity(password: str) -> int:
-    """return password complexity score from 0 (invalid) to 4 (strong)"""
-
-    lowercase = re.search('[a-z]', password) is not None
-    uppercase = re.search('[A-Z]', password) is not None
-    number = re.search(r'\d', password) is not None
-    nonalpha = re.search(r'\W', password) is not None
-
-    return sum([lowercase, uppercase, number, nonalpha])
 
 
 class Dialog:
