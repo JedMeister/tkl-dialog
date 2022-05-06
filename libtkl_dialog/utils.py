@@ -1,5 +1,8 @@
 # Copyright (c) 2022 TurnKey GNU/Linux <admin@turnkeylinux.org>
 
+import re
+import sys
+
 
 def fatal(e: str):
     print("error:", e, file=sys.stderr)
@@ -11,7 +14,8 @@ def usage(e: str = None, doc: str = None):
         print("Error:", e, file=sys.stderr)
 
     print(f"Syntax: {sys.argv[0]}", file=sys.stderr)
-    print(doc.strip(), file=sys.stderr)
+    if doc:
+        print(doc.strip(), file=sys.stderr)
     sys.exit(1)
 
 
