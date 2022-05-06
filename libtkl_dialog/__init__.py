@@ -1,18 +1,14 @@
-# Copyright (c) 2010 Alon Swartz <alon@turnkeylinux.org>
+# Copyright (c) 2022 TurnKey GNU/Linux <admin@turnkeylinux.org>
 
 import re
-import sys
+import os
 import dialog
-import traceback
-from io import StringIO
-from os import environ
-from pathlib import Path
 import logging
 
 EMAIL_RE = re.compile(r"(?:^|\s).*\S@\S+(?:\s|$)", re.IGNORECASE)
 
 LOG_LEVEL = logging.INFO
-if 'DIALOG_DEBUG' in environ.keys():
+if 'DIALOG_DEBUG' in os.environ.keys():
     LOG_LEVEL = logging.DEBUG
 
 logging.basicConfig(
@@ -22,11 +18,11 @@ logging.basicConfig(
 )
 
 
-class Error(Exception):
+class TklDialogError(Exception):
     pass
 
 
-def password_complexity(password):
+def password_complexity(password: str) -> str:
     """return password complexity score from 0 (invalid) to 4 (strong)"""
 
     lowercase = re.search('[a-z]', password) is not None
@@ -38,7 +34,7 @@ def password_complexity(password):
 
 
 class Dialog:
-    def __init__(self, title, width=60, height=20):
+    def __init__(self, title: str, width: int = 60, height: int = 20):
         self.width = width
         self.height = height
 
@@ -47,7 +43,7 @@ class Dialog:
         self.console.add_persistent_args(["--backtitle", title])
         self.console.add_persistent_args(["--no-mouse"])
 
-    def _handle_exitcode(self, retcode):
+    def _handle_exitcode(self, retcode: int) -> bool:
         logging.debug(f"_handle_exitcode(retcode={retcode!r})")
         if retcode == self.console.ESC:  # ESC, ALT+?
             text = "Do you really want to quit?"
@@ -58,14 +54,13 @@ class Dialog:
         logging.debug("_handle_exitcode(): [no conditions met, returning True]")
         return True
 
-    def _calc_height(self, text):
+    def _calc_height(self, text: str) -> int:
         height = 6
         for line in text.splitlines():
             height += (len(line) // self.width) + 1
-
         return height
 
-    def wrapper(self, dialog_name, text, *args, **kws):
+    def wrapper(self, dialog_name: str, text: str, *args, **kws) -> int:
         logging.debug(
             f"wrapper(dialog_name={dialog_name!r}, text=<redacted>,"
             +f" *{args!r}, **{kws!r})")
@@ -75,7 +70,7 @@ class Dialog:
             logging.error(
                     f"wrapper(dialog_name={dialog_name!r}, ...) raised exception",
                     exc_info=e)
-            raise Error("dialog not supported: " + dialog_name)
+            raise TklDialogError("dialog not supported: " + dialog_name)
 
         while 1:
             try:
@@ -87,31 +82,37 @@ class Dialog:
                     break
 
             except Exception as e:
-                sio = StringIO()
-                traceback.print_exc(file=sio)
-                logging.error(
-                    f"wrapper(dialog_name={dialog_name!r}) raised exception",
-                    exc_info=e)
-                self.msgbox("Caught exception", sio.getvalue())
+                raise
+            #    sio = StringIO()
+            #    traceback.print_exc(file=sio)
+            #    logging.error(
+            #        f"wrapper(dialog_name={dialog_name!r}) raised exception",
+            #        exc_info=e)
+            #    self.msgbox("Caught exception", sio.getvalue())
 
         return retcode
 
-    def error(self, text):
+    def error(self, text: str) -> self.wrapper:
         height = self._calc_height(text)
         return self.wrapper("msgbox", text, height, self.width, title="Error")
 
-    def msgbox(self, title, text):
+    def msgbox(self, title: str, text: str) -> self.wrapper:
         height = self._calc_height(text)
         logging.debug(f"msgbox(title={title!r}, text=<redacted>)")
         return self.wrapper("msgbox", text, height, self.width, title=title)
 
-    def infobox(self, text):
+    def infobox(self, text: str) -> self.wrapper:
         height = self._calc_height(text)
         logging.debug(f"infobox(text={text!r}")
         return self.wrapper("infobox", text, height, self.width)
 
-    def inputbox(self, title, text, init='', ok_label="OK",
-                 cancel_label="Cancel"):
+    def inputbox(self,
+                 title: str,
+                 text: str,
+                 init: str = '',
+                 ok_label: str = "OK",
+                 cancel_label: str = "Cancel"
+                 ) -> self.wrapper:
         logging.debug(
                 f"inputbox(title={title!r}, text=<redacted>,"
                 +f" init={init!r}, ok_label={ok_label!r},"
@@ -125,7 +126,12 @@ class Dialog:
                             init=init, ok_label=ok_label,
                             cancel_label=cancel_label, no_cancel=no_cancel)
 
-    def yesno(self, title, text, yes_label="Yes", no_label="No"):
+    def yesno(self,
+              title: str,
+              text: str,
+              yes_label: str = "Yes",
+              no_label: str = "No"
+              ) -> bool:
         height = self._calc_height(text)
         retcode = self.wrapper("yesno", text, height, self.width, title=title,
                                yes_label=yes_label, no_label=no_label)
@@ -135,7 +141,11 @@ class Dialog:
                 f" -> {retcode}")
         return True if retcode == 'ok' else False
 
-    def menu(self, title, text, choices):
+    def menu(self,
+             title: str,
+             text: str,
+             choices: list[str]
+             ) -> str:
         """choices: array of tuples
             [ (opt1, opt1_text), (opt2, opt2_text) ]
         """
@@ -145,8 +155,13 @@ class Dialog:
                                        no_cancel=True)
         return choice
 
-    def get_password(self, title, text, pass_req=8,
-                     min_complexity=3, blacklist=[]):
+    def get_password(self,
+                     title: str,
+                     text: str,
+                     pass_req: int = 8,
+                     min_complexity: int = 3,
+                     blacklist: list[str] = []
+                     ) -> str:
         req_string = (
             f'\n\nPassword Requirements\n - must be at least {pass_req}'
             +' characters long\n - must contain characters from at'
@@ -207,7 +222,7 @@ class Dialog:
 
             self.error('Password mismatch, please try again.')
 
-    def get_email(self, title, text, init=''):
+    def get_email(self, title: str, text: str, init: str = '') -> str:
         logging.debug(f'get_email(title={title!r}, text=<redacted>, init={init!r})')
         while 1:
             email = self.inputbox(title, text, init, "Apply", "")[1]
@@ -222,7 +237,7 @@ class Dialog:
 
             return email
 
-    def get_input(self, title, text, init=''):
+    def get_input(self, title: str, text: str, init: str = '') -> str:
         while 1:
             s = self.inputbox(title, text, init, "Apply", "")[1]
             if not s:
