@@ -24,7 +24,7 @@ class TklDialogError(Exception):
     pass
 
 
-def password_complexity(password: str) -> Union[str, int]:
+def password_complexity(password: str) -> int:
     """return password complexity score from 0 (invalid) to 4 (strong)"""
 
     lowercase = re.search('[a-z]', password) is not None
@@ -67,7 +67,8 @@ class Dialog:
             height += (len(line) // self.width) + 1
         return height
 
-    def wrapper(self, dialog_name: str, text: str, *args, **kws) -> int:
+    def wrapper(self, dialog_name: str, text: str, *args, **kws
+                ) -> list[str]:
         logging.debug(
             f"wrapper(dialog_name={dialog_name!r}, text=<redacted>,"
             +f" *{args!r}, **{kws!r})")
@@ -96,22 +97,25 @@ class Dialog:
             #        f"wrapper(dialog_name={dialog_name!r}) raised exception",
             #        exc_info=e)
             #    self.msgbox("Caught exception", sio.getvalue())
-
+        if type(retcode) == str:
+            return [retcode]
         return retcode
 
-    def error(self, text: str) -> int:
+    def error(self, text: str) -> str:
         height = self._calc_height(text)
-        return self.wrapper("msgbox", text, height, self.width, title="Error")
+        return self.wrapper(
+                "msgbox", text, height, self.width, title="Error")[0]
 
-    def msgbox(self, title: str, text: str) -> int:
+    def msgbox(self, title: str, text: str) -> str:
         height = self._calc_height(text)
         logging.debug(f"msgbox(title={title!r}, text=<redacted>)")
-        return self.wrapper("msgbox", text, height, self.width, title=title)
+        return self.wrapper(
+                "msgbox", text, height, self.width, title=title)[0]
 
-    def infobox(self, text: str) -> int:
+    def infobox(self, text: str) -> str:
         height = self._calc_height(text)
         logging.debug(f"infobox(text={text!r}")
-        return self.wrapper("infobox", text, height, self.width)
+        return self.wrapper("infobox", text, height, self.width)[0]
 
     def inputbox(self,
                  title: str,
@@ -119,7 +123,7 @@ class Dialog:
                  init: str = '',
                  ok_label: str = "OK",
                  cancel_label: str = "Cancel"
-                 ) -> int:
+                 ) -> list[str]:
         logging.debug(
                 f"inputbox(title={title!r}, text=<redacted>,"
                 +f" init={init!r}, ok_label={ok_label!r},"
@@ -180,7 +184,7 @@ class Dialog:
                 f'{req_string}. Also must NOT contain these characters: {blacklist}'
         height = self._calc_height(text+req_string) + 3
 
-        def ask(title, text: str) -> int:
+        def ask(title, text: str) -> str:
             return self.wrapper('passwordbox', text+req_string, height,
                                 self.width, title=title, ok_label='OK',
                                 no_cancel='True', insecure=True)[1]
