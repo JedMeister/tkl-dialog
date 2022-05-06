@@ -29,8 +29,8 @@ def password_complexity(password: str) -> int:
 
     lowercase = re.search('[a-z]', password) is not None
     uppercase = re.search('[A-Z]', password) is not None
-    number = re.search('\d', password) is not None
-    nonalpha = re.search('\W', password) is not None
+    number = re.search(r'\d', password) is not None
+    nonalpha = re.search(r'\W', password) is not None
 
     return sum([lowercase, uppercase, number, nonalpha])
 
@@ -58,7 +58,8 @@ class Dialog:
                 sys.exit(0)
             return False
 
-        logging.debug("_handle_exitcode(): [no conditions met, returning True]")
+        logging.debug(
+                "_handle_exitcode(): [no conditions met, returning True]")
         return True
 
     def _calc_height(self, text: str) -> int:
@@ -71,20 +72,21 @@ class Dialog:
                 ) -> list[str]:
         logging.debug(
             f"wrapper(dialog_name={dialog_name!r}, text=<redacted>,"
-            +f" *{args!r}, **{kws!r})")
+            f" *{args!r}, **{kws!r})")
         try:
             method = getattr(self.console, dialog_name)
         except AttributeError as e:
             logging.error(
-                    f"wrapper(dialog_name={dialog_name!r}, ...) raised exception",
-                    exc_info=e)
+                f"wrapper(dialog_name={dialog_name!r}, ...) raised exception",
+                exc_info=e)
             raise TklDialogError("dialog not supported: " + dialog_name)
 
         while 1:
             try:
                 retcode = method("\n" + text, *args, **kws)
                 logging.debug(
-                    f"wrapper(dialog_name={dialog_name!r}, ...) -> {retcode!r}")
+                    f"wrapper(dialog_name={dialog_name!r}, ...) ->"
+                    f" {retcode!r}")
 
                 if self._handle_exitcode(retcode):
                     break
@@ -126,13 +128,13 @@ class Dialog:
                  ) -> list[str]:
         logging.debug(
                 f"inputbox(title={title!r}, text=<redacted>,"
-                +f" init={init!r}, ok_label={ok_label!r},"
-                +f" cancel_label={cancel_label!r})")
+                f" init={init!r}, ok_label={ok_label!r},"
+                f" cancel_label={cancel_label!r})")
 
         height = self._calc_height(text) + 3
         no_cancel = True if cancel_label == "" else False
-        logging.debug(
-                f"inputbox(...) [calculated height={height}, no_cancel={no_cancel}]")
+        logging.debug(f"inputbox(...) [calculated height={height},"
+                      f" no_cancel={no_cancel}]")
         return self.wrapper("inputbox", text, height, self.width, title=title,
                             init=init, ok_label=ok_label,
                             cancel_label=cancel_label, no_cancel=no_cancel)
@@ -175,13 +177,13 @@ class Dialog:
                      ) -> str:
         req_string = (
             f'\n\nPassword Requirements\n - must be at least {pass_req}'
-            +' characters long\n - must contain characters from at'
-            +f' least {min_complexity} of the following categories: uppercase,'
-            +' lowercase, numbers, symbols'
+            f' characters long\n - must contain characters from at'
+            f' least {min_complexity} of the following categories: uppercase,'
+            f' lowercase, numbers, symbols'
         )
         if blacklist:
-            req_string =\
-                f'{req_string}. Also must NOT contain these characters: {blacklist}'
+            req_string = (f'{req_string}. Also must NOT contain these'
+                          f' characters: {blacklist}')
         height = self._calc_height(text+req_string) + 3
 
         def ask(title, text: str) -> str:
@@ -197,25 +199,26 @@ class Dialog:
 
             if isinstance(pass_req, int):
                 if len(password) < pass_req:
-                    self.error(f"Password must be at least {pass_req} characters.")
+                    self.error(
+                        f"Password must be at least {pass_req} characters.")
                     continue
             else:
                 if not re.match(pass_req, password):
                     self.error("Password does not match complexity"
-                               +" requirements.")
+                               " requirements.")
                     continue
 
             if password_complexity(password) < min_complexity:
                 if min_complexity <= 3:
                     self.error("Insecure password! Mix uppercase, lowercase,"
-                               +" and at least one number. Multiple words and"
-                               +" punctuation are highly recommended but not"
-                               +" strictly required.")
+                               " and at least one number. Multiple words and"
+                               " punctuation are highly recommended but not"
+                               " strictly required.")
                 elif min_complexity == 4:
                     self.error("Insecure password! Mix uppercase, lowercase,"
-                               +" numbers and at least one special/punctuation"
-                               +" character. Multiple words are highly"
-                               +" recommended but not strictly required.")
+                               " numbers and at least one special/punctuation"
+                               " character. Multiple words are highly"
+                               " recommended but not strictly required.")
                 continue
 
             found_items = []
@@ -223,9 +226,8 @@ class Dialog:
                 if item in password:
                     found_items.append(item)
             if found_items:
-                self.error(
-                        f'Password can NOT include these characters: {blacklist}.'
-                        +f' Found {found_items}')
+                self.error(f'Password can NOT include these characters:'
+                           f' {blacklist}. Found {found_items}')
                 continue
 
             if password == ask(title, 'Confirm password'):
@@ -234,7 +236,8 @@ class Dialog:
             self.error('Password mismatch, please try again.')
 
     def get_email(self, title: str, text: str, init: str = '') -> str:
-        logging.debug(f'get_email(title={title!r}, text=<redacted>, init={init!r})')
+        logging.debug(
+                f'get_email(title={title!r}, text=<redacted>, init={init!r})')
         while 1:
             email = self.inputbox(title, text, init, "Apply", "")[1]
             logging.debug(f'get_email(...) email={email!r}')
