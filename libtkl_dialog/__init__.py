@@ -4,6 +4,9 @@ import re
 import os
 import sys
 import logging
+import subprocess
+from subprocess import PIPE, STDOUT
+from tempfile import mkstemp
 from typing import Union
 
 import dialog
@@ -260,3 +263,21 @@ class Dialog:
                 continue
 
             return s
+
+    def run_cmd(self, cmd: list[str], cmd_txt: str = None
+                ) -> tuple[int, list[str]]:
+        if not cmd_txt:
+            cmd_text = ' '.join(cmd)
+        tmp_fd, tmp_file = mkstemp()
+        p = subprocess.Popen(cmd, stdout=PIPE, stderr=STDOUT, text=True)
+        t = subprocess.Popen(['tee', tmp_file], stdin=p.stdout,
+                              stdout=PIPE, stderr=STDOUT, text=True)
+        if t.stdout:
+            d = self.console.progressbox(fd=t.stdout.fileno(),
+                                         text=f"Running '{cmd_txt}':")
+        if not p.returncode:
+            p.wait()
+        with open(tmp_file, 'r') as fob:
+            output = fob.readlines()
+        os.remove(tmp_file)
+        return (p.returncode, output)
