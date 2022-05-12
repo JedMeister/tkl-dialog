@@ -13,12 +13,17 @@ import dialog
 
 from .utils import password_complexity
 
+# minimum passw length
+PASS_LENGTH = 8
+# passw complexity (how many of upper, lower, num & symbols)
+PASS_COMPLEXITY = 3
+# complexity requirement length limit (i.e. override complexity if this long)
+COMPLEXITY_LEN_LMT = 28
 EMAIL_RE = re.compile(r"(?:^|\s).*\S@\S+(?:\s|$)", re.IGNORECASE)
 
 LOG_LEVEL = logging.INFO
 if 'DIALOG_DEBUG' in os.environ.keys():
     LOG_LEVEL = logging.DEBUG
-
 logging.basicConfig(
     filename='/var/log/dialog.log',
     encoding='utf-8',
@@ -31,6 +36,11 @@ class TklDialogError(Exception):
 
 
 class Dialog:
+
+    PASS_LENGTH = PASS_LENGTH
+    PASS_COMPLEXITY = PASS_COMPLEXITY
+    COMPLEXITY_LEN_LMT = COMPLEXITY_LEN_LMT
+
     def __init__(self,
                  title: str,
                  width: int = 60,
@@ -86,7 +96,7 @@ class Dialog:
             raise TklDialogError("dialog not supported: " + dialog_name)
 
         while 1:
-            try:
+            #try:
                 retcode = method("\n" + text, *args, **kws)
                 logging.debug(
                     f"wrapper(dialog_name={dialog_name!r}, ...) ->"
@@ -95,8 +105,8 @@ class Dialog:
                 if self._handle_exitcode(retcode):
                     break
 
-            except Exception as e:
-                raise
+            #except Exception as e:
+            #    raise
             #    sio = StringIO()
             #    traceback.print_exc(file=sio)
             #    logging.error(
@@ -112,11 +122,13 @@ class Dialog:
         return self.wrapper(
                 "msgbox", text, height, self.width, title="Error")[0]
 
-    def msgbox(self, title: str, text: str) -> str:
+    def msgbox(self, title: str, text: str, button_label: str = None) -> str:
         height = self._calc_height(text)
+        kwargs = {'title': title}
+        if button_label:
+            kwargs['button_label'] = button_label
         logging.debug(f"msgbox(title={title!r}, text=<redacted>)")
-        return self.wrapper(
-                "msgbox", text, height, self.width, title=title)[0]
+        return self.wrapper("msgbox", text, height, self.width, **kwargs)[0]
 
     def infobox(self, text: str) -> str:
         height = self._calc_height(text)
@@ -127,8 +139,8 @@ class Dialog:
                  title: str,
                  text: str,
                  init: str = '',
-                 ok_label: str = "OK",
-                 cancel_label: str = "Cancel"
+                 ok_label: str = None,
+                 cancel_label: str = None
                  ) -> list[str]:
         logging.debug(
                 f"inputbox(title={title!r}, text=<redacted>,"
@@ -136,22 +148,30 @@ class Dialog:
                 f" cancel_label={cancel_label!r})")
 
         height = self._calc_height(text) + 3
-        no_cancel = True if cancel_label == "" else False
+        kwargs = {'title': title, 'init': init}
+        if ok_label:
+            kwargs['ok_label'] = ok_label
+        if cancel_label:
+            kwargs['cancel_label'] = cancel_label
+        if cancel_label == "":
+            kwargs['no_cancel'] = 'True'
         logging.debug(f"inputbox(...) [calculated height={height},"
-                      f" no_cancel={no_cancel}]")
-        return self.wrapper("inputbox", text, height, self.width, title=title,
-                            init=init, ok_label=ok_label,
-                            cancel_label=cancel_label, no_cancel=no_cancel)
+                      f" no_cancel={kwargs['no_cancel']}")
+        return self.wrapper("inputbox", text, height, self.width, **kwargs)
 
     def yesno(self,
               title: str,
               text: str,
-              yes_label: str = "Yes",
-              no_label: str = "No"
+              yes_label: str = None,
+              no_label: str = None
               ) -> bool:
         height = self._calc_height(text)
-        retcode = self.wrapper("yesno", text, height, self.width, title=title,
-                               yes_label=yes_label, no_label=no_label)
+        kwargs = {'title':title}
+        if yes_label:
+            kwargs['yes_label'] = yes_label
+        if no_label:
+            kwargs['no_label'] = no_label
+        retcode = self.wrapper("yesno", text, height, self.width, **kwargs)
         logging.debug(
                 f"yesno(title={title!r}, text=<redacted>,"
                 f" yes_label={yes_label!r}, no_label={no_label!r})"
@@ -161,81 +181,93 @@ class Dialog:
     def menu(self,
              title: str,
              text: str,
-             choices: list[str]
+             choices: list[tuple[str]],
+             no_cancel: bool = False
              ) -> str:
         """choices: array of tuples
             [ (opt1, opt1_text), (opt2, opt2_text) ]
         """
-        retcode, choice = self.wrapper(
-                "menu", text, self.height, self.width,
-                menu_height=len(choices)+1, title=title,
-                choices=choices, no_cancel=True)
+        kwargs = {'title': title, 'menu_height': len(choices) + 1,
+                  'choices': choices}
+        if no_cancel:
+            kwargs['no_cancel'] = no_cancel
+        retcode, choice = self.wrapper("menu", text, self.height, self.width,
+                                       **kwargs)
         return choice
 
-    def get_password(self,
+    def get_passw(self,
                      title: str,
                      text: str,
-                     pass_req: int = 8,
-                     min_complexity: int = 3,
+                     pass_len: int = None,
+                     min_complexity: int = None,
+                     complexity_len_lmt: int = None,
                      blacklist: list[str] = []
                      ) -> str:
+        if not pass_len:
+            pass_len = PASS_LENGTH
+        if not min_complexity:
+            min_complexity = PASS_COMPLEXITY
+        if not complexity_len_lmt and complexity_len_lmt != 0:
+            complexity_len_lmt = COMPLEXITY_LEN_LMT
         req_string = (
-            f'\n\nPassword Requirements\n - must be at least {pass_req}'
+            f'\n\nPassword Requirements\n - must be at least {pass_len}'
             f' characters long\n - must contain characters from at'
             f' least {min_complexity} of the following categories: uppercase,'
-            f' lowercase, numbers, symbols'
-        )
+            f' lowercase, numbers, symbols\n')
+        if complexity_len_lmt > pass_len:
+            req_string = (
+                f'{req_string}\n   (override complexity overridden if longer'
+                f' than {complexity_len_lmt})')
         if blacklist:
-            req_string = (f'{req_string}. Also must NOT contain these'
-                          f' characters: {blacklist}')
+            blist = ', '.join(f'"{item}"' for item in blacklist)
+            req_string = (
+                f'{req_string}\n - must NOT contain these chars: {blist}')
         height = self._calc_height(text+req_string) + 3
 
         def ask(title, text: str) -> str:
-            return self.wrapper('passwordbox', text+req_string, height,
-                                self.width, title=title, ok_label='OK',
-                                no_cancel='True', insecure=True)[1]
+            text = f'text\nreq_string'
+            return self.wrapper(
+                    'passwbox', text, height, self.width, title=title,
+                    ok_label='OK', no_cancel='True', insecure=True)[1]
 
         while 1:
-            password = ask(title, text)
-            if not password:
-                self.error("Please enter non-empty password!")
+            passw = ask(title, text)
+            if not passw:
+                self.error("Please enter non-empty passw!")
                 continue
 
-            if isinstance(pass_req, int):
-                if len(password) < pass_req:
+            if isinstance(pass_len, int):
+                if len(passw) < pass_len:
                     self.error(
-                        f"Password must be at least {pass_req} characters.")
-                    continue
-            else:
-                if not re.match(pass_req, password):
-                    self.error("Password does not match complexity"
-                               " requirements.")
-                    continue
-
-            if password_complexity(password) < min_complexity:
-                if min_complexity <= 3:
-                    self.error("Insecure password! Mix uppercase, lowercase,"
-                               " and at least one number. Multiple words and"
-                               " punctuation are highly recommended but not"
-                               " strictly required.")
-                elif min_complexity == 4:
-                    self.error("Insecure password! Mix uppercase, lowercase,"
-                               " numbers and at least one special/punctuation"
-                               " character. Multiple words are highly"
-                               " recommended but not strictly required.")
+                        f"Password must be at least {pass_len} characters.")
+                continue
+            if complexity_len_lmt != 0 or len(passw) <= complexity_len_lmt:
+                if password_complexity(passw) < min_complexity:
+                    if min_complexity <= 3:
+                        self.error(
+                            "Insecure passw! Mix uppercase, lowercase,"
+                            " and at least one number. Multiple words and"
+                            " punctuation are highly recommended but not"
+                            " strictly required.")
+                    elif min_complexity == 4:
+                        self.error(
+                            "Insecure passw! Mix uppercase, lowercase,"
+                            " numbers and at least one special/punctuation"
+                            " character. Multiple words are highly"
+                            " recommended but not strictly required.")
                 continue
 
             found_items = []
             for item in blacklist:
-                if item in password:
+                if item in passw:
                     found_items.append(item)
             if found_items:
                 self.error(f'Password can NOT include these characters:'
                            f' {blacklist}. Found {found_items}')
                 continue
 
-            if password == ask(title, 'Confirm password'):
-                return password
+            if passw == ask(title, 'Confirm password'):
+                return passw
 
             self.error('Password mismatch, please try again.')
 
