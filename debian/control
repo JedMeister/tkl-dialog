@@ -1,0 +1,18 @@
+Source: tkl-dialog
+Section: misc
+Priority: optional
+Maintainer: Jeremy Davis <jeremy@turnkeylinux.org>
+Build-Depends:
+ debhelper (>= 10),
+ python3-all (>= 3.9~),
+ dh-python,
+ python3-dialog
+Standards-Version: 4.0.0
+
+Package: tkl-dialog
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ python3-dialog
+Description: A super simple python3 dialog wrapper
