@@ -3,53 +3,53 @@
 import re
 import os
 import sys
-import logging
 import subprocess
 from subprocess import PIPE, STDOUT
 from tempfile import mkstemp
 from typing import Union
 
-import dialog
+import dialog  # type: ignore # maybe I'll make a stub one day...
 
-from .utils import password_complexity
+from .utils import password_complexity, crack, password_cracklib
+from .exceptions import TklDialogError, TklDialogImportError
+from .logger import logging
+
+WIDTH = 60
+HEIGHT = 20  # minimum
 
 # minimum passw length
 PASS_LENGTH = 8
-# passw complexity (how many of upper, lower, num & symbols)
+# password complexity (how many of upper, lower, num & symbols)
 PASS_COMPLEXITY = 3
 # complexity requirement length limit (i.e. override complexity if this long)
 COMPLEXITY_LEN_LMT = 28
 EMAIL_RE = re.compile(r"(?:^|\s).*\S@\S+(?:\s|$)", re.IGNORECASE)
 
-LOG_LEVEL = logging.INFO
-if 'DIALOG_DEBUG' in os.environ.keys():
-    LOG_LEVEL = logging.DEBUG
-logging.basicConfig(
-    filename='/var/log/dialog.log',
-    encoding='utf-8',
-    level=LOG_LEVEL
-)
-
-
-class TklDialogError(Exception):
-    pass
-
 
 class Dialog:
 
+    WIDTH = WIDTH
+    HEIGHT = HEIGHT
     PASS_LENGTH = PASS_LENGTH
     PASS_COMPLEXITY = PASS_COMPLEXITY
     COMPLEXITY_LEN_LMT = COMPLEXITY_LEN_LMT
 
+    TklDialogError = TklDialogError
+
     def __init__(self,
                  title: str,
-                 width: int = 60,
-                 height: int = 20,
+                 width: int = None,
+                 height: int = None,
                  ok_label: str = None,
                  cancel_label: str = None,
-                 colors: bool = False,
-                 mouse: bool = False):
+                 colors: bool = None,
+                 mouse: bool = None,
+                 no_cancel: bool = None):
+        if not width:
+            width = self.WIDTH
         self.width = width
+        if not height:
+            height = self.HEIGHT
         self.height = height
 
         self.console = dialog.Dialog(dialog="dialog")
@@ -59,10 +59,20 @@ class Dialog:
             self.console.add_persistent_args(["--ok-label", ok_label])
         if cancel_label:
             self.console.add_persistent_args(["--cancel-label", cancel_label])
+        if no_cancel:
+            self.console.add_persistent_args(["--no-cancel"]),
         if colors:
             self.console.add_persistent_args(["--colors"])
         if not mouse:
             self.console.add_persistent_args(["--no-mouse"])
+
+    def _no_cancel(self, enable: bool = None) -> None:
+        """Enable/disable Cancel button."""
+        no_cancel = "--no-cancel"
+        if not enable and no_cancel in self.console.dialog_persistent_arglist:
+            self.console.dialog_persistent_arglist.remove(no_cancel)
+        if enable and no_cancel not in self.console.dialog_persistent_arglist:
+            self.console.add_persistent_args([no_cancel])
 
     def _handle_exitcode(self, retcode: str) -> bool:
         logging.debug(f"_handle_exitcode(retcode={retcode!r})")
@@ -82,11 +92,14 @@ class Dialog:
             height += (len(line) // self.width) + 1
         return height
 
-    def wrapper(self, dialog_name: str, text: str, *args, **kws
+    def wrapper(self, dialog_name: str, text: str, *args, **kwargs
                 ) -> list[str]:
         logging.debug(
             f"wrapper(dialog_name={dialog_name!r}, text=<redacted>,"
-            f" *{args!r}, **{kws!r})")
+            f" *{args!r}, **{kwargs!r})")
+        if 'no_cancel' in kwargs.keys():
+            self._no_cancel()
+            del kwargs['no_cancel']
         try:
             method = getattr(self.console, dialog_name)
         except AttributeError as e:
@@ -97,7 +110,7 @@ class Dialog:
 
         while 1:
             #try:
-                retcode = method("\n" + text, *args, **kws)
+                retcode = method("\n" + text, *args, **kwargs)
                 logging.debug(
                     f"wrapper(dialog_name={dialog_name!r}, ...) ->"
                     f" {retcode!r}")
@@ -122,13 +135,12 @@ class Dialog:
         return self.wrapper(
                 "msgbox", text, height, self.width, title="Error")[0]
 
-    def msgbox(self, title: str, text: str, button_label: str = None) -> str:
+    def msgbox(self, title: str, text: str) -> str:
         height = self._calc_height(text)
         kwargs = {'title': title}
-        if button_label:
-            kwargs['button_label'] = button_label
         logging.debug(f"msgbox(title={title!r}, text=<redacted>)")
-        return self.wrapper("msgbox", text, height, self.width, **kwargs)[0]
+        return self.wrapper("msgbox", text, height,
+                            self.width, title=title)[0]
 
     def infobox(self, text: str) -> str:
         height = self._calc_height(text)
@@ -148,6 +160,7 @@ class Dialog:
                 f" cancel_label={cancel_label!r})")
 
         height = self._calc_height(text) + 3
+        no_cancel = False
         kwargs = {'title': title, 'init': init}
         if ok_label:
             kwargs['ok_label'] = ok_label
@@ -155,8 +168,9 @@ class Dialog:
             kwargs['cancel_label'] = cancel_label
         if cancel_label == "":
             kwargs['no_cancel'] = 'True'
+            no_cancel = True
         logging.debug(f"inputbox(...) [calculated height={height},"
-                      f" no_cancel={kwargs['no_cancel']}")
+                      f" no_cancel={no_cancel}")
         return self.wrapper("inputbox", text, height, self.width, **kwargs)
 
     def yesno(self,
@@ -166,7 +180,7 @@ class Dialog:
               no_label: str = None
               ) -> bool:
         height = self._calc_height(text)
-        kwargs = {'title':title}
+        kwargs = {'title': title}
         if yes_label:
             kwargs['yes_label'] = yes_label
         if no_label:
@@ -181,7 +195,7 @@ class Dialog:
     def menu(self,
              title: str,
              text: str,
-             choices: list[tuple[str]],
+             choices: list[tuple[str, str]],
              no_cancel: bool = False
              ) -> str:
         """choices: array of tuples
@@ -195,12 +209,13 @@ class Dialog:
                                        **kwargs)
         return choice
 
-    def get_passw(self,
+    def get_password(self,
                      title: str,
                      text: str,
                      pass_len: int = None,
                      min_complexity: int = None,
                      complexity_len_lmt: int = None,
+                     force_cracklib: bool = None,
                      blacklist: list[str] = []
                      ) -> str:
         if not pass_len:
@@ -209,6 +224,7 @@ class Dialog:
             min_complexity = PASS_COMPLEXITY
         if not complexity_len_lmt and complexity_len_lmt != 0:
             complexity_len_lmt = COMPLEXITY_LEN_LMT
+        msg = ''
         req_string = (
             f'\n\nPassword Requirements\n - must be at least {pass_len}'
             f' characters long\n - must contain characters from at'
@@ -222,6 +238,13 @@ class Dialog:
             blist = ', '.join(f'"{item}"' for item in blacklist)
             req_string = (
                 f'{req_string}\n - must NOT contain these chars: {blist}')
+        if force_cracklib:
+            if crack:
+                req_string = (f'{req_string}\n - must pass cracklib checks')
+            else:
+                raise TklDialogImportError(
+                        "Cracklib not found. Please install 'python3-cracklib'"
+                        " or set force_cracklib=False.")
         height = self._calc_height(text+req_string) + 3
 
         def ask(title, text: str) -> str:
@@ -241,6 +264,7 @@ class Dialog:
                     self.error(
                         f"Password must be at least {pass_len} characters.")
                 continue
+
             if complexity_len_lmt != 0 or len(passw) <= complexity_len_lmt:
                 if password_complexity(passw) < min_complexity:
                     if min_complexity <= 3:
@@ -265,6 +289,20 @@ class Dialog:
                 self.error(f'Password can NOT include these characters:'
                            f' {blacklist}. Found {found_items}')
                 continue
+
+            if crack:
+                check = password_cracklib(passw)
+                if check:
+                    if force_cracklib:
+                        self.error(
+                            f"Password doesn't pass cracklib test: {check}")
+                    else:
+                        msg = ("Your password doesn't pass Cracklib (password"
+                               f" checking library):\n - {check}.\n\n"
+                               "Do you wish to set a new password?")
+                        retart = self.yesno('Cracklib failure', msg,
+                                            yes_label='New Password',
+                                            no_label="Use pass anyway")
 
             if passw == ask(title, 'Confirm password'):
                 return passw
@@ -296,17 +334,20 @@ class Dialog:
 
             return s
 
-    def run_cmd(self, cmd: list[str], cmd_txt: str = None
-                ) -> tuple[int, list[str]]:
+    def run_cmd(self, cmd: list[str], cmd_txt: str = None,
+                ok_button = True) -> tuple[int, list[str]]:
         if not cmd_txt:
             cmd_text = ' '.join(cmd)
         tmp_fd, tmp_file = mkstemp()
         p = subprocess.Popen(cmd, stdout=PIPE, stderr=STDOUT, text=True)
         t = subprocess.Popen(['tee', tmp_file], stdin=p.stdout,
-                              stdout=PIPE, stderr=STDOUT, text=True)
+                             stdout=PIPE, stderr=STDOUT, text=True)
         if t.stdout:
-            d = self.console.progressbox(fd=t.stdout.fileno(),
-                                         text=f"Running '{cmd_txt}':")
+            if ok_button:
+                method = self.console.programbox
+            else:
+                method = self.console.progressbox
+            d = method(fd=t.stdout.fileno(), text=f"Running '{cmd_txt}':")
         if not p.returncode:
             p.wait()
         with open(tmp_file, 'r') as fob:
